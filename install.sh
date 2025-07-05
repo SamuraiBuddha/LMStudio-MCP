@@ -55,8 +55,7 @@ check_requirements() {
     fi
     
     # Check Python version
-    PYTHON_VERSION=$($PYTHON_CMD -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-    if [[ $(echo "$PYTHON_VERSION 3.7" | awk '{print ($1 >= $2)}') == 0 ]]; then
+    if ! $PYTHON_CMD -c "import sys; exit(0 if sys.version_info >= (3, 7) else 1)"; then
         print_error "Python 3.7+ is required. Found: $PYTHON_VERSION"
         exit 1
     fi
