@@ -45,6 +45,18 @@ batch_process(items, "extract summary", 5, True)
 batch_process(items, "analyze", 3, False)
 ```
 
+### Statistics & Management
+```python
+# Get usage statistics
+get_sidekick_stats()
+
+# Clear all contexts
+clear_contexts("*")
+
+# Clear specific contexts
+clear_contexts("project_")
+```
+
 ## 🔧 Remote Configuration
 
 ### Connect to Remote LM Studio
@@ -137,6 +149,12 @@ set LMSTUDIO_PORT=1234
 
 # Format code
 "Format this JSON properly"
+
+# Check statistics
+"Show me sidekick usage stats"
+
+# Clear memory
+"Clear all stored contexts"
 ```
 
 ## 🛠️ Environment Variables

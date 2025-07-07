@@ -27,6 +27,8 @@ LMStudio-MCP Sidekick creates a bridge between Claude (with MCP capabilities) an
 - **Automate Menial Tasks**: Format, extract, transform, validate, and generate content
 - **Batch Process**: Efficiently process lists of items with automatic batching
 - **Load Models**: Attempt to load specific models (LM Studio v0.3.0+)
+- **Usage Statistics**: Monitor performance, request counts, and context storage
+- **Context Management**: Clear stored contexts to manage memory efficiently
 
 ## Prerequisites
 
@@ -170,6 +172,19 @@ batch_process(urls, "extract title and description", 5, True)
 Attempt to load a specific model in LM Studio.
 - Requires LM Studio v0.3.0+ with API support
 - Falls back to manual instructions if not supported
+
+#### `get_sidekick_stats()`
+Get comprehensive usage statistics and performance metrics.
+- Shows connection status and uptime
+- Displays request counts and rate limit usage
+- Lists stored contexts with token counts
+- Helps monitor sidekick performance
+
+#### `clear_contexts(context_pattern)`
+Clear stored contexts to free up memory.
+- Use `"*"` to clear all contexts
+- Use specific patterns to clear matching contexts
+- Essential for long-running sessions
 
 ## Recommended Models
 

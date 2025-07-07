@@ -39,6 +39,14 @@ rate_limiter = defaultdict(list)
 context_store = {}
 MAX_CONTEXT_SIZE = int(os.getenv("MAX_CONTEXT_SIZE", "32000"))  # tokens
 
+# Model type mappings
+model_types = {
+    'coding': ['code', 'coder', 'program'],
+    'database': ['db', 'sql', 'database'],
+    'os': ['os', 'system', 'admin'],
+    'general': ['chat', 'instruct', 'general']
+}
+
 def log_error(message: str):
     """Log error messages to stderr for debugging"""
     print(f"[{datetime.now().isoformat()}] ERROR: {message}", file=sys.stderr)
@@ -203,7 +211,8 @@ async def chat_completion(
     prompt: str, 
     system_prompt: str = "", 
     temperature: float = 0.7, 
-    max_tokens: int = 1024
+    max_tokens: int = 1024,
+    model_type: str = "general"
 ) -> str:
     """Generate a completion from the current LM Studio model.
     
@@ -212,6 +221,7 @@ async def chat_completion(
         system_prompt: Optional system instructions for the model
         temperature: Controls randomness (0.0 to 1.0)
         max_tokens: Maximum number of tokens to generate
+        model_type: Type of task ('coding', 'database', 'os', 'general')
         
     Returns:
         The model's response to the prompt
@@ -483,6 +493,81 @@ async def batch_process(
         return f"Error in batch processing: {str(e)}"
 
 @mcp.tool()
+async def get_sidekick_stats() -> str:
+    """Get usage statistics and performance metrics for the sidekick.
+    
+    Returns:
+        Formatted statistics including request counts, context usage, and uptime.
+    """
+    try:
+        uptime = datetime.now() - datetime.fromisoformat(os.getenv('SIDEKICK_START_TIME', datetime.now().isoformat()))
+        
+        # Calculate statistics
+        total_requests = sum(len(requests) for requests in rate_limiter.values())
+        total_contexts = len(context_store)
+        total_context_tokens = sum(ctx.get('tokens', 0) for ctx in context_store.values())
+        
+        # Get model usage stats from recent requests
+        recent_window = time.time() - RATE_LIMIT_WINDOW
+        recent_requests = sum(len([t for t in requests if t > recent_window]) for requests in rate_limiter.values())
+        
+        stats = f"📊 **LM Studio Sidekick Statistics**\n\n"
+        stats += f"🏠 **Connection**: {LMSTUDIO_HOST}:{LMSTUDIO_PORT}\n"
+        stats += f"⏰ **Uptime**: {str(uptime).split('.')[0]}\n\n"
+        
+        stats += f"📈 **Usage Metrics**:\n"
+        stats += f"  • Total Requests: {total_requests}\n"
+        stats += f"  • Recent Requests (last {RATE_LIMIT_WINDOW}s): {recent_requests}\n"
+        stats += f"  • Rate Limit: {RATE_LIMIT_MAX_REQUESTS} per {RATE_LIMIT_WINDOW}s\n\n"
+        
+        stats += f"💾 **Context Storage**:\n"
+        stats += f"  • Stored Contexts: {total_contexts}\n"
+        stats += f"  • Total Tokens: {total_context_tokens:,}\n"
+        stats += f"  • Max Context Size: {MAX_CONTEXT_SIZE:,} tokens\n\n"
+        
+        if total_contexts > 0:
+            stats += f"📝 **Stored Contexts**:\n"
+            for ctx_id, ctx_data in list(context_store.items())[:5]:  # Show first 5
+                timestamp = ctx_data.get('timestamp', 'Unknown')
+                tokens = ctx_data.get('tokens', 0)
+                stats += f"  • {ctx_id}: {tokens} tokens (stored: {timestamp})\n"
+            if total_contexts > 5:
+                stats += f"  • ... and {total_contexts - 5} more\n"
+        
+        return stats
+        
+    except Exception as e:
+        log_error(f"Error in get_sidekick_stats: {str(e)}")
+        return f"Error generating statistics: {str(e)}"
+
+@mcp.tool()
+async def clear_contexts(context_pattern: str = "*") -> str:
+    """Clear stored contexts to free up memory.
+    
+    Args:
+        context_pattern: Pattern to match context IDs ('*' for all, or specific pattern)
+        
+    Returns:
+        Status of the clearing operation
+    """
+    try:
+        if context_pattern == "*":
+            # Clear all contexts
+            count = len(context_store)
+            context_store.clear()
+            return f"🧹 Cleared all {count} stored contexts."
+        else:
+            # Clear matching contexts
+            matched_keys = [k for k in context_store.keys() if context_pattern in k]
+            for key in matched_keys:
+                del context_store[key]
+            return f"🧹 Cleared {len(matched_keys)} contexts matching '{context_pattern}'."
+            
+    except Exception as e:
+        log_error(f"Error in clear_contexts: {str(e)}")
+        return f"Error clearing contexts: {str(e)}"
+
+@mcp.tool()
 async def load_model(model_name: str) -> str:
     """Attempt to load a specific model in LM Studio.
     
@@ -516,6 +601,9 @@ async def load_model(model_name: str) -> str:
 
 def main():
     """Entry point for the package when installed via pip"""
+    # Set start time for uptime tracking
+    os.environ['SIDEKICK_START_TIME'] = datetime.now().isoformat()
+    
     log_info("Starting LM Studio Sidekick MCP Server")
     log_info(f"Connecting to LM Studio at {LMSTUDIO_HOST}:{LMSTUDIO_PORT}")
     log_info(f"Recommended model: {RECOMMENDED_MODEL}")
