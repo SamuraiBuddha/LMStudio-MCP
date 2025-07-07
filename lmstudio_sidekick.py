@@ -3,12 +3,15 @@
 LM Studio Sidekick MCP Server
 Enhanced version combining existing functionality with sidekick features
 for context offloading and menial task automation.
+
+Supports both local and remote LM Studio instances.
 """
 
 from mcp.server.fastmcp import FastMCP
 import requests
 import json
 import sys
+import os
 import time
 import asyncio
 from typing import List, Dict, Any, Optional
@@ -19,19 +22,22 @@ import re
 # Initialize FastMCP server
 mcp = FastMCP("lmstudio-sidekick")
 
-# LM Studio settings
-LMSTUDIO_API_BASE = "http://localhost:1234/v1"
+# LM Studio settings - now configurable via environment variables
+LMSTUDIO_HOST = os.getenv("LMSTUDIO_HOST", "localhost")
+LMSTUDIO_PORT = os.getenv("LMSTUDIO_PORT", "1234")
+LMSTUDIO_API_BASE = f"http://{LMSTUDIO_HOST}:{LMSTUDIO_PORT}/v1"
+
 DEFAULT_MODEL = "default"  # Will be replaced with whatever model is currently loaded
 RECOMMENDED_MODEL = "qwen2.5-coder-32b-instruct-q4_k_m"  # Optimized for A5000 24GB
 
 # Rate limiting configuration
-RATE_LIMIT_WINDOW = 60  # seconds
-RATE_LIMIT_MAX_REQUESTS = 30  # max requests per window
+RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # seconds
+RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "30"))  # max requests per window
 rate_limiter = defaultdict(list)
 
 # Context management
 context_store = {}
-MAX_CONTEXT_SIZE = 32000  # tokens
+MAX_CONTEXT_SIZE = int(os.getenv("MAX_CONTEXT_SIZE", "32000"))  # tokens
 
 def log_error(message: str):
     """Log error messages to stderr for debugging"""
@@ -65,6 +71,7 @@ async def health_check() -> str:
         A message indicating the LM Studio API status and current configuration.
     """
     try:
+        log_info(f"Checking LM Studio at {LMSTUDIO_API_BASE}")
         response = requests.get(f"{LMSTUDIO_API_BASE}/models", timeout=5)
         if response.status_code == 200:
             models = response.json().get("data", [])
@@ -73,7 +80,7 @@ async def health_check() -> str:
             # Check if recommended model is available
             has_recommended = any(RECOMMENDED_MODEL in model.get('id', '') for model in models)
             
-            status = f"✅ LM Studio API is running and accessible.\n"
+            status = f"✅ LM Studio API is running and accessible at {LMSTUDIO_HOST}:{LMSTUDIO_PORT}\n"
             status += f"📊 {model_count} models available\n"
             
             if has_recommended:
@@ -83,9 +90,11 @@ async def health_check() -> str:
             
             return status
         else:
-            return f"⚠️ LM Studio API returned status code {response.status_code}."
+            return f"⚠️ LM Studio API at {LMSTUDIO_HOST}:{LMSTUDIO_PORT} returned status code {response.status_code}."
+    except requests.exceptions.ConnectionError:
+        return f"❌ Cannot connect to LM Studio at {LMSTUDIO_HOST}:{LMSTUDIO_PORT}. Make sure LM Studio is running and the server is started."
     except Exception as e:
-        return f"❌ Error connecting to LM Studio API: {str(e)}"
+        return f"❌ Error connecting to LM Studio API at {LMSTUDIO_HOST}:{LMSTUDIO_PORT}: {str(e)}"
 
 @mcp.tool()
 async def list_models() -> str:
@@ -97,13 +106,13 @@ async def list_models() -> str:
     try:
         response = requests.get(f"{LMSTUDIO_API_BASE}/models", timeout=5)
         if response.status_code != 200:
-            return f"Failed to fetch models. Status code: {response.status_code}"
+            return f"Failed to fetch models from {LMSTUDIO_HOST}:{LMSTUDIO_PORT}. Status code: {response.status_code}"
         
         models = response.json().get("data", [])
         if not models:
-            return "No models found in LM Studio."
+            return f"No models found in LM Studio at {LMSTUDIO_HOST}:{LMSTUDIO_PORT}."
         
-        result = "🤖 Available models in LM Studio:\n\n"
+        result = f"🤖 Available models in LM Studio ({LMSTUDIO_HOST}:{LMSTUDIO_PORT}):\n\n"
         
         # Categorize models
         coding_models = []
@@ -143,7 +152,7 @@ async def list_models() -> str:
         return result
     except Exception as e:
         log_error(f"Error in list_models: {str(e)}")
-        return f"Error listing models: {str(e)}"
+        return f"Error listing models from {LMSTUDIO_HOST}:{LMSTUDIO_PORT}: {str(e)}"
 
 @mcp.tool()
 async def get_current_model() -> str:
@@ -165,12 +174,12 @@ async def get_current_model() -> str:
         )
         
         if response.status_code != 200:
-            return f"❌ No model currently loaded. Status code: {response.status_code}"
+            return f"❌ No model currently loaded at {LMSTUDIO_HOST}:{LMSTUDIO_PORT}. Status code: {response.status_code}"
         
         # Extract model info from response
         model_info = response.json().get("model", "Unknown")
         
-        result = f"🎯 Currently loaded model: {model_info}\n\n"
+        result = f"🎯 Currently loaded model at {LMSTUDIO_HOST}:{LMSTUDIO_PORT}: {model_info}\n\n"
         
         # Add recommendations based on model type
         if 'coder' in model_info.lower():
@@ -187,7 +196,7 @@ async def get_current_model() -> str:
         return result
     except Exception as e:
         log_error(f"Error in get_current_model: {str(e)}")
-        return f"❌ Error identifying current model: {str(e)}"
+        return f"❌ Error identifying current model at {LMSTUDIO_HOST}:{LMSTUDIO_PORT}: {str(e)}"
 
 @mcp.tool()
 async def chat_completion(
@@ -221,7 +230,7 @@ async def chat_completion(
         # Add user message
         messages.append({"role": "user", "content": prompt})
         
-        log_info(f"Sending request to LM Studio with {len(messages)} messages")
+        log_info(f"Sending request to LM Studio at {LMSTUDIO_HOST}:{LMSTUDIO_PORT} with {len(messages)} messages")
         
         response = requests.post(
             f"{LMSTUDIO_API_BASE}/chat/completions",
@@ -235,7 +244,7 @@ async def chat_completion(
         
         if response.status_code != 200:
             log_error(f"LM Studio API error: {response.status_code}")
-            return f"Error: LM Studio returned status code {response.status_code}"
+            return f"Error: LM Studio at {LMSTUDIO_HOST}:{LMSTUDIO_PORT} returned status code {response.status_code}"
         
         response_json = response.json()
         log_info(f"Received response from LM Studio")
@@ -495,7 +504,7 @@ async def load_model(model_name: str) -> str:
         )
         
         if response.status_code == 200:
-            return f"✅ Model '{model_name}' loaded successfully!"
+            return f"✅ Model '{model_name}' loaded successfully at {LMSTUDIO_HOST}:{LMSTUDIO_PORT}!"
         elif response.status_code == 404:
             return f"⚠️ Model loading not supported in this LM Studio version. Please load '{model_name}' manually through the LM Studio UI."
         else:
@@ -508,8 +517,14 @@ async def load_model(model_name: str) -> str:
 def main():
     """Entry point for the package when installed via pip"""
     log_info("Starting LM Studio Sidekick MCP Server")
+    log_info(f"Connecting to LM Studio at {LMSTUDIO_HOST}:{LMSTUDIO_PORT}")
     log_info(f"Recommended model: {RECOMMENDED_MODEL}")
     log_info(f"Rate limit: {RATE_LIMIT_MAX_REQUESTS} requests per {RATE_LIMIT_WINDOW} seconds")
+    
+    # Display environment variable info
+    if LMSTUDIO_HOST != "localhost":
+        log_info(f"Using remote LM Studio instance at {LMSTUDIO_HOST}")
+    
     mcp.run(transport='stdio')
 
 if __name__ == "__main__":
