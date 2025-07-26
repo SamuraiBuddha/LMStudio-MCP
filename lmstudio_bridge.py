@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 mcp = FastMCP("lmstudio-bridge")
 
 # LM Studio settings
-LMSTUDIO_API_BASE = "http://localhost:1234/v1"
+LMSTUDIO_API_BASE = "http://192.168.50.20:1234"
 DEFAULT_MODEL = "default"  # Will be replaced with whatever model is currently loaded
 
 def log_error(message: str):
@@ -28,7 +28,7 @@ async def health_check() -> str:
         A message indicating whether the LM Studio API is running.
     """
     try:
-        response = requests.get(f"{LMSTUDIO_API_BASE}/models")
+        response = requests.get(f"{LMSTUDIO_API_BASE}/v1/models")
         if response.status_code == 200:
             return "LM Studio API is running and accessible."
         else:
@@ -44,7 +44,7 @@ async def list_models() -> str:
         A formatted list of available models.
     """
     try:
-        response = requests.get(f"{LMSTUDIO_API_BASE}/models")
+        response = requests.get(f"{LMSTUDIO_API_BASE}/v1/models")
         if response.status_code != 200:
             return f"Failed to fetch models. Status code: {response.status_code}"
         
@@ -72,7 +72,7 @@ async def get_current_model() -> str:
         # LM Studio doesn't have a direct endpoint for currently loaded model
         # We'll check which model responds to a simple completion request
         response = requests.post(
-            f"{LMSTUDIO_API_BASE}/chat/completions",
+            f"{LMSTUDIO_API_BASE}/v1/chat/completions",
             json={
                 "messages": [{"role": "system", "content": "What model are you?"}],
                 "temperature": 0.7,
@@ -116,7 +116,7 @@ async def chat_completion(prompt: str, system_prompt: str = "", temperature: flo
         log_info(f"Sending request to LM Studio with {len(messages)} messages")
         
         response = requests.post(
-            f"{LMSTUDIO_API_BASE}/chat/completions",
+            f"{LMSTUDIO_API_BASE}/v1/chat/completions",
             json={
                 "messages": messages,
                 "temperature": temperature,
